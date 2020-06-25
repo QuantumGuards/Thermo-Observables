@@ -1,1 +1,1 @@
-# Thermodynamic-Observables
+# Thermo-Observables
