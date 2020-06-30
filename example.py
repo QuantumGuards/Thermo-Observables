@@ -2,6 +2,7 @@
 from qiskit.aqua.algorithms import VQE, NumPyEigensolver
 import matplotlib.pyplot as plt
 from numpy import random
+import time
 import numpy as np
 from qiskit.chemistry.components.variational_forms import UCCSD
 from qiskit.chemistry.components.initial_states import HartreeFock
@@ -12,6 +13,7 @@ from qiskit.aqua.operators import Z2Symmetries
 from qiskit import IBMQ, BasicAer, Aer
 from qiskit.chemistry.drivers import PyQuanteDriver, UnitsType, BaseDriver
 from qiskit.chemistry import FermionicOperator
+
 
 def get_qubit_op(dist):
     driver = PyQuanteDriver(atoms="Li .0 .0 .0; H .0 .0 " + str(dist), units=UnitsType.ANGSTROM,
@@ -39,11 +41,12 @@ def get_qubit_op(dist):
     return qubitOp, num_particles, num_spin_orbitals, shift
 
 backend = BasicAer.get_backend("statevector_simulator")
-distances = random.permutation(np.arange(0.5, 2.0, 0.1))
+distances = np.arange(0.5, 1, 0.1)
 exact_energies = []
 vqe_energies = []
 # optimizer = SLSQP(maxiter=5)
 optimizer = GRABER()
+vqe_time = 0
 
 for dist in distances:
     qubitOp, num_particles, num_spin_orbitals, shift = get_qubit_op(dist)
@@ -60,12 +63,16 @@ for dist in distances:
         initial_state=initial_state,
         qubit_mapping='parity'
     )
+    begin = time.time()
     vqe = VQE(qubitOp, var_form, optimizer)
     vqe_result = np.real(vqe.run(backend)['eigenvalue'] + shift)
+    end = time.time()
+    vqe_time += (end - begin)
     vqe_energies.append(vqe_result)
     print("Interatomic Distance:", np.round(dist, 2), "VQE Result:", vqe_result, "Exact Energy:", exact_energies[-1])
 
-print("All energies have been calculated")
+print(f"All energies have been calculated. Total time: {vqe_time}")
+
 
 plt.plot(distances, exact_energies, 'o', label="Exact Energy")
 plt.plot(distances, vqe_energies, 'x', label="VQE Energy")

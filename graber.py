@@ -31,19 +31,19 @@ class GRABER(Optimizer):
 
     """
 
-    _OPTIONS = ['maxiter', 'eta', 'tol', 'disp']
+    _OPTIONS = ['maxiter', 'tol', 'disp']
 
     def __init__(self,
-                 maxiter: int = 100,
-                 eta: float = 0.1,
+                 maxiter: int = 1000,
+                 offset: float = 10,
+                 initialEta: float = 1,
                  tol: float = 1e-6,
                  disp: bool = False,
                  momentum: float = 0.25) -> None:
         """
         Args:
             maxiter: Maximum number of iterations, each iteration evaluation gradient.
-            eta: The coefficient of the gradient update. Increasing this value
-                 results in larger step sizes: param = previous_param - eta * deriv
+            offset: Number of iterations before eta starts decreasing
             tol: The convergence criteria that must be reached before stopping.
                  Optimization stops when: absolute(loss - previous_loss) < tol
             disp: Set to True to display convergence messages.
@@ -54,7 +54,8 @@ class GRABER(Optimizer):
         validate_range_exclusive_max('momentum', momentum, 0, 1)
         super().__init__()
 
-        self._eta = eta
+        self._initialEta = initialEta
+        self._offset = offset
         self._maxiter = maxiter
         self._tol = tol if tol is not None else 1e-6
         self._disp = disp
@@ -68,6 +69,13 @@ class GRABER(Optimizer):
             'bounds': Optimizer.SupportLevel.ignored,
             'initial_point': Optimizer.SupportLevel.required
         }
+
+    def _stepLength(self, iter):
+        if iter <= self._offset:
+            return self._initialEta
+        else:
+            return 1/(iter - self._offset)
+
 
     def deriv(self, j, params, obj):
         """
@@ -93,11 +101,12 @@ class GRABER(Optimizer):
         # return the derivative value
         return 0.5 * (obj(plus_params) - obj(minus_params))
 
-    def update(self, j, params, deriv, mprev):
+    def update(self, eta, j, params, deriv, mprev):
         """
         Updates the jth parameter based on the derivative and previous momentum
 
         Args:
+            eta: the current step length
             j (int): Index of the parameter to compute the derivative of.
             params (array): Current value of the parameters to evaluate
                             the objective function at.
@@ -106,7 +115,8 @@ class GRABER(Optimizer):
         Returns:
             tuple: params, new momentums
         """
-        mnew = self._eta * (deriv * (1 - self._momentum_coeff) + mprev[j] * self._momentum_coeff)
+
+        mnew = eta * (deriv * (1 - self._momentum_coeff) + mprev[j] * self._momentum_coeff)
         params[j] -= mnew
         return params, mnew
 
@@ -161,7 +171,8 @@ class GRABER(Optimizer):
             derivative = self.deriv(j, params, objective_function)
             for j in range(num_vars):
                 # update parameters in order based on quantum gradient
-                params, momentum[j] = self.update(j, params, derivative, momentum)
+                eta = self._stepLength(it)
+                params, momentum[j] = self.update(eta, j, params, derivative, momentum)
 
             # check the value of the objective function
             objval = objective_function(params)
